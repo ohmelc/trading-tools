@@ -27,13 +27,31 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 # ── Universe fetchers ─────────────────────────────────────────────────────────
 
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    )
+}
+
+
 def fetch_sp500() -> list[str]:
+    """S&P 500 components from Wikipedia (requests + pd.read_html to avoid 403)."""
     try:
-        tables = pd.read_html(
+        resp = requests.get(
             "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            attrs={"id": "constituents"},
+            headers=_HEADERS,
+            timeout=30,
         )
-        symbols = tables[0]["Symbol"].str.replace(".", "-", regex=False).str.strip().tolist()
+        resp.raise_for_status()
+        tables = pd.read_html(StringIO(resp.text), attrs={"id": "constituents"})
+        symbols = (
+            tables[0]["Symbol"]
+            .str.replace(".", "-", regex=False)
+            .str.strip()
+            .tolist()
+        )
         log.info(f"S&P 500: {len(symbols)} symbols fetched")
         return symbols
     except Exception as e:
@@ -42,32 +60,27 @@ def fetch_sp500() -> list[str]:
 
 
 def fetch_russell2000() -> list[str]:
-    """Download IWM (iShares Russell 2000 ETF) holdings CSV."""
-    url = (
-        "https://www.ishares.com/us/products/239726/"
-        "ishares-russell-2000-etf/1467271812596.ajax"
-        "?fileType=csv&fileName=IWM_holdings&dataType=fund"
-    )
+    """Russell 2000 components from Slickcharts HTML table."""
     try:
         resp = requests.get(
-            url,
-            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.ishares.com"},
+            "https://www.slickcharts.com/russell2000",
+            headers=_HEADERS,
             timeout=30,
         )
         resp.raise_for_status()
-        lines = resp.text.splitlines()
-        # Holdings CSV has a preamble; find the row starting with "Ticker"
-        header_idx = next((i for i, l in enumerate(lines) if l.startswith("Ticker")), None)
-        if header_idx is None:
-            log.warning("Russell 2000: could not find Ticker header in CSV")
-            return []
-        df = pd.read_csv(StringIO("\n".join(lines[header_idx:])))
-        tickers = (
-            df["Ticker"].dropna().astype(str).str.strip()
-            .pipe(lambda s: s[s.str.match(r"^[A-Z]{1,5}$")])
-        )
-        log.info(f"Russell 2000: {len(tickers)} symbols fetched")
-        return tickers.tolist()
+        tables = pd.read_html(StringIO(resp.text))
+        # Find the table that has a Symbol/Ticker column
+        for tbl in tables:
+            col = next((c for c in tbl.columns if str(c).lower() in ("symbol", "ticker")), None)
+            if col:
+                tickers = (
+                    tbl[col].dropna().astype(str).str.strip()
+                    .pipe(lambda s: s[s.str.match(r"^[A-Z]{1,5}$")])
+                )
+                log.info(f"Russell 2000: {len(tickers)} symbols fetched")
+                return tickers.tolist()
+        log.warning("Russell 2000: no Symbol/Ticker column found in Slickcharts tables")
+        return []
     except Exception as e:
         log.warning(f"Russell 2000 fetch failed: {e}")
         return []
