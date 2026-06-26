@@ -48,7 +48,7 @@ Every `candidates` entry in `results/latest.json` always carries:
 ## GitHub Actions
 
 Secrets required in the repo (Settings → Secrets → Actions):
-- `TELEGRAM_TOKEN`
-- `TELEGRAM_CHAT_ID`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_USER_ID`
 
 To trigger manually: Actions tab → "Daily Stock Screener" → Run workflow.

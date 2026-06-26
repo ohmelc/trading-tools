@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +25,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger(__name__)
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)  # suppress internal 404 noise
 
 
 # ── Config & universe ─────────────────────────────────────────────────────────
@@ -255,7 +256,7 @@ def screen_one(symbol: str, cfg: dict, df_spy: pd.DataFrame | None) -> dict | No
 
 def send_telegram(token: str | None, chat_id: str | None, rows: list[dict], top_n: int) -> None:
     if not token or not chat_id:
-        log.warning("TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set — skipping notification")
+        log.warning("TELEGRAM_BOT_TOKEN or TELEGRAM_USER_ID not set — skipping notification")
         return
 
     lines = [f"📊 Screener {date.today()} — top {min(top_n, len(rows))} (data only, not a recommendation)\n"]
@@ -326,7 +327,7 @@ def main() -> None:
     Path("results").mkdir(exist_ok=True)
     output = {
         "run_date": str(date.today()),
-        "run_time_utc": datetime.utcnow().isoformat(),
+        "run_time_utc": datetime.now(timezone.utc).isoformat(),
         "config": cfg,
         "tickers_requested": tickers,
         "tickers_skipped": skipped,
@@ -340,8 +341,8 @@ def main() -> None:
 
     # Telegram summary
     send_telegram(
-        os.environ.get("TELEGRAM_TOKEN"),
-        os.environ.get("TELEGRAM_CHAT_ID"),
+        os.environ.get("TELEGRAM_BOT_TOKEN"),
+        os.environ.get("TELEGRAM_USER_ID"),
         results,
         cfg["telegram_top_n"],
     )
