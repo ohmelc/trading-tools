@@ -11,5 +11,6 @@
   "rs_lookback": 63,
   "calendar_lookahead": 10,
   "ranking_metric": "rs_3m_vs_spy",
-  "telegram_top_n": 5
+  "telegram_top_n": 5,
+  "max_pct_above_sma": 30
 }

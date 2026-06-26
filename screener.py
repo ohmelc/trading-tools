@@ -187,6 +187,14 @@ def build_reasons(
     if cal["exdiv_date"]:
         reasons.append(f"[!] Ex-dividend: {cal['exdiv_date']}")
 
+    max_dev = cfg.get("max_pct_above_sma", 30)
+    pct_above_sma = (price - sma_now) / sma_now * 100 if sma_now else 0
+    if pct_above_sma > max_dev:
+        reasons.append(
+            f"[!] Overextended: price {pct_above_sma:.0f}% above 50-SMA"
+            f" — watch for pullback toward ${sma_now:.2f}"
+        )
+
     return reasons
 
 
@@ -260,12 +268,18 @@ def screen_one(symbol: str, cfg: dict, df_spy: pd.DataFrame | None) -> dict | No
     # ── Calendar ──
     cal = get_calendar_flags(ticker, cfg["calendar_lookahead"])
 
+    pct_above_sma50 = round((price - sma_now) / sma_now * 100, 1) if sma_now else 0.0
+    max_dev = cfg.get("max_pct_above_sma", 30)
+    overextended = pct_above_sma50 > max_dev
+
     reasons = build_reasons(price, sma_now, sma_ago, hh_hl, atr_pct, rs, cal, cfg)
 
     return {
         "symbol": symbol,
         "price": round(price, 2),
         "sma_50": round(sma_now, 2),
+        "pct_above_sma50": pct_above_sma50,
+        "overextended": overextended,
         "price_above_sma50": bool(price > sma_now),
         "sma50_rising": bool(sma_now > sma_ago),
         "higher_highs_higher_lows": bool(hh_hl),
@@ -303,13 +317,19 @@ def telegram_post(token: str, chat_id: str, text: str) -> None:
     resp.raise_for_status()
 
 
-def send_telegram(token: str | None, chat_id: str | None, rows: list[dict], top_n: int) -> None:
+def send_telegram(
+    token: str | None,
+    chat_id: str | None,
+    candidates: list[dict],
+    watchlist: list[dict],
+    top_n: int,
+) -> None:
     if not token or not chat_id:
         log.warning("TELEGRAM_BOT_TOKEN or TELEGRAM_USER_ID not set — skipping notification")
         return
 
-    lines = [f"📊 Screener {date.today()} — top {min(top_n, len(rows))} (data only, not a recommendation)\n"]
-    for row in rows[:top_n]:
+    lines = [f"📊 Screener {date.today()} — top {min(top_n, len(candidates))} (data only, not a recommendation)\n"]
+    for row in candidates[:top_n]:
         rs_str = f"RS {row['rs_3m_vs_spy']:.2f}" if row.get("rs_3m_vs_spy") is not None else ""
         header = " · ".join(filter(None, [f"*{row['symbol']}* ${row['price']}", rs_str]))
         lines.append(header)
@@ -319,6 +339,10 @@ def send_telegram(token: str | None, chat_id: str | None, rows: list[dict], top_
         key += [r for r in row.get("reasons", []) if "[Y]" in r][:2]
         for r in key[:3]:
             lines.append(f"  {r}")
+
+    if watchlist:
+        syms = ", ".join(r["symbol"] for r in watchlist[:10])
+        lines.append(f"\n👀 *Watchlist* ({len(watchlist)} overextended >30% above SMA): {syms}")
 
     lines.append("\n_auditor: VERIFY — human must confirm on chart_")
     msg = "\n".join(lines)
@@ -360,12 +384,22 @@ def main() -> None:
             results.append(row)
         time.sleep(0.4)  # gentle rate-limiting
 
-    log.info(f"Passed filter: {len(results)} | Skipped/filtered: {len(skipped)} {skipped}")
+    candidates = [r for r in results if not r["overextended"]]
+    watchlist  = [r for r in results if r["overextended"]]
+    log.info(
+        f"Candidates: {len(candidates)} | Watchlist (overextended): {len(watchlist)}"
+        f" | Skipped/filtered: {len(skipped)}"
+    )
 
-    # Sort by rank_value descending — this is a sort, not a recommendation
-    results.sort(key=lambda r: r["rank_value"], reverse=True)
-    for i, row in enumerate(results, start=1):
+    # Sort candidates by rank_value descending — sort only, not a recommendation
+    candidates.sort(key=lambda r: r["rank_value"], reverse=True)
+    for i, row in enumerate(candidates, start=1):
         row["rank"] = i
+
+    # Watchlist sorted by RS descending too — for reference
+    watchlist.sort(key=lambda r: r["rank_value"], reverse=True)
+    for i, row in enumerate(watchlist, start=1):
+        row["watchlist_rank"] = i
 
     # Write JSON output
     Path("results").mkdir(exist_ok=True)
@@ -375,8 +409,10 @@ def main() -> None:
         "config": cfg,
         "tickers_requested": tickers,
         "tickers_skipped": skipped,
-        "candidate_count": len(results),
-        "candidates": results,
+        "candidate_count": len(candidates),
+        "watchlist_count": len(watchlist),
+        "candidates": candidates,
+        "watchlist": watchlist,
     }
     out_path = Path("results/latest.json")
     with open(out_path, "w") as f:
@@ -387,7 +423,8 @@ def main() -> None:
     send_telegram(
         os.environ.get("TELEGRAM_BOT_TOKEN"),
         os.environ.get("TELEGRAM_USER_ID"),
-        results,
+        candidates,
+        watchlist,
         cfg["telegram_top_n"],
     )
 
