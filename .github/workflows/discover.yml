@@ -1,0 +1,39 @@
+name: Weekly Universe Discovery
+
+on:
+  schedule:
+    - cron: '0 20 * * 0'    # 20:00 UTC Sunday (4:00 AM SGT Monday)
+  workflow_dispatch:          # allow manual trigger
+
+permissions:
+  contents: write             # needed to commit updated tickers.txt
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run discovery
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
+        run: python discover.py
+
+      - name: Commit updated tickers.txt if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tickers.txt
+          git diff --staged --quiet || git commit -m "auto: add discovered tickers $(date -u +%Y-%m-%d)"
+          git push

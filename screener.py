@@ -154,6 +154,42 @@ def get_calendar_flags(ticker: yf.Ticker, lookahead: int) -> dict:
     return result
 
 
+# ── Reasons builder ──────────────────────────────────────────────────────────
+
+def build_reasons(
+    price: float, sma_now: float, sma_ago: float, hh_hl: bool,
+    atr_pct: float, rs: float | None, cal: dict, cfg: dict,
+) -> list[str]:
+    def ok(cond: bool) -> str:
+        return "[Y]" if cond else "[N]"
+
+    reasons = []
+    above = price > sma_now
+    reasons.append(f"Price ${price:.2f} {'above' if above else 'below'} 50-SMA ${sma_now:.2f} {ok(above)}")
+
+    rising = sma_now > sma_ago
+    reasons.append(f"50-SMA {'rising' if rising else 'flat/falling'} (was ${sma_ago:.2f} ten bars ago) {ok(rising)}")
+
+    reasons.append(f"Trend structure HH/HL: {ok(hh_hl)}")
+
+    lo, hi = cfg["atr_min_pct"], cfg["atr_max_pct"]
+    in_band = lo <= atr_pct <= hi
+    reasons.append(f"ATR {atr_pct:.1f}% {'within' if in_band else 'outside'} {lo}-{hi}% volatility band {ok(in_band)}")
+
+    if rs is not None:
+        label = "outperforming SPY [Y]" if rs >= 1 else "underperforming SPY [N]"
+        reasons.append(f"3m RS vs SPY {rs:.2f} - {label}")
+    else:
+        reasons.append("3m RS vs SPY: unavailable")
+
+    if cal["earnings_date"]:
+        reasons.append(f"[!] Earnings approaching: {cal['earnings_date']}")
+    if cal["exdiv_date"]:
+        reasons.append(f"[!] Ex-dividend: {cal['exdiv_date']}")
+
+    return reasons
+
+
 # ── Per-ticker screening ──────────────────────────────────────────────────────
 
 def screen_one(symbol: str, cfg: dict, df_spy: pd.DataFrame | None) -> dict | None:
@@ -224,6 +260,8 @@ def screen_one(symbol: str, cfg: dict, df_spy: pd.DataFrame | None) -> dict | No
     # ── Calendar ──
     cal = get_calendar_flags(ticker, cfg["calendar_lookahead"])
 
+    reasons = build_reasons(price, sma_now, sma_ago, hh_hl, atr_pct, rs, cal, cfg)
+
     return {
         "symbol": symbol,
         "price": round(price, 2),
@@ -247,12 +285,23 @@ def screen_one(symbol: str, cfg: dict, df_spy: pd.DataFrame | None) -> dict | No
         "exdiv_date": cal["exdiv_date"],
         "earnings_flag": cal["earnings_date"] is not None,
         "exdiv_flag": cal["exdiv_date"] is not None,
+        "reasons": reasons,
         "auditor": "VERIFY",
         "run_date": str(date.today()),
     }
 
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
+
+def telegram_post(token: str, chat_id: str, text: str) -> None:
+    """Low-level Telegram send. Raises on failure."""
+    resp = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+
 
 def send_telegram(token: str | None, chat_id: str | None, rows: list[dict], top_n: int) -> None:
     if not token or not chat_id:
@@ -261,26 +310,21 @@ def send_telegram(token: str | None, chat_id: str | None, rows: list[dict], top_
 
     lines = [f"📊 Screener {date.today()} — top {min(top_n, len(rows))} (data only, not a recommendation)\n"]
     for row in rows[:top_n]:
-        flags = []
-        if row.get("earnings_flag"):
-            flags.append(f"⚠️ earnings {row['earnings_date']}")
-        if row.get("exdiv_flag"):
-            flags.append(f"💰 ex-div {row['exdiv_date']}")
         rs_str = f"RS {row['rs_3m_vs_spy']:.2f}" if row.get("rs_3m_vs_spy") is not None else ""
-        parts = filter(None, [f"*{row['symbol']}* ${row['price']}", rs_str, *flags])
-        lines.append(" · ".join(parts))
+        header = " · ".join(filter(None, [f"*{row['symbol']}* ${row['price']}", rs_str]))
+        lines.append(header)
+
+        # Up to 2 key reasons: warnings first, then first passing rule
+        key = [r for r in row.get("reasons", []) if r.startswith("[!]")]
+        key += [r for r in row.get("reasons", []) if "[Y]" in r][:2]
+        for r in key[:3]:
+            lines.append(f"  {r}")
 
     lines.append("\n_auditor: VERIFY — human must confirm on chart_")
     msg = "\n".join(lines)
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
-        resp = requests.post(
-            url,
-            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
-            timeout=15,
-        )
-        resp.raise_for_status()
+        telegram_post(token, chat_id, msg)
         log.info("Telegram message sent")
     except Exception as e:
         log.error(f"Telegram send failed: {e}")
