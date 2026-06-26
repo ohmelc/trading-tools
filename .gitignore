@@ -1,1 +1,21 @@
 .claude/
+
+# Secrets — never commit
+.env
+.env.*
+*credentials*.json
+*service-account*.json
+*serviceaccount*.json
+secrets/
+*.pem
+*.key
+
+# Screener output (uploaded as Actions artifact, not committed)
+results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

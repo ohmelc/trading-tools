@@ -1,0 +1,35 @@
+# Stock universe — one ticker per line. Add/remove freely.
+# Screener filters to last close < max_price (see config.json).
+GD
+AMOM
+JEPI
+ZS
+NUE
+CLW
+ALGN
+GDS
+LIT
+SPY
+MEOH
+VOO
+GLD
+SE
+GOOGL
+SPCX
+TSLA
+QQQ
+NVDA
+FANG
+COST
+BABA
+FSLR
+SNOW
+MDB
+NET
+ESS
+ASML
+TAN
+CRWD
+DOCU
+ARKK
+XLF

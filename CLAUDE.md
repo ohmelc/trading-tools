@@ -12,6 +12,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 4. **Position-sizing hard cap.** All position-sizing logic must cap risk at 1.5% of account value per trade. Any sizing calculation that would breach that limit must refuse to produce a result and raise an explicit error instead.
 
-## Project Status
+## Architecture
 
-Repository is in early setup. Add architecture notes, build commands, and development workflows here once the codebase is established.
+```
+screener.py          ← daily screener (Python, yfinance, no broker calls)
+tickers.txt          ← universe — one ticker per line, # to comment
+config.json          ← all tuneable parameters
+requirements.txt     ← pip dependencies
+results/latest.json  ← screener output (gitignored; uploaded as Actions artifact)
+calculator.html      ← standalone position-size calculator (HTML/CSS/JS)
+.github/workflows/screener.yml  ← GitHub Actions cron (21:30 UTC Mon–Fri)
+```
+
+## Dev commands
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run screener locally (reads .env for Telegram credentials)
+python screener.py
+
+# Telegram credentials go in .env (gitignored):
+#   TELEGRAM_TOKEN=...
+#   TELEGRAM_CHAT_ID=...
+```
+
+## Screener output contract
+
+Every `candidates` entry in `results/latest.json` always carries:
+- `auditor: "VERIFY"` — never omit, never auto-clear
+- `support_zones` / `resistance_zones` — labelled "confirm on chart"
+- No overall verdict field — the tool never outputs a go/no-go signal
+
+## GitHub Actions
+
+Secrets required in the repo (Settings → Secrets → Actions):
+- `TELEGRAM_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+To trigger manually: Actions tab → "Daily Stock Screener" → Run workflow.
