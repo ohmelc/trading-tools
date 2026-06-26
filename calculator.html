@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Position Size Calculator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #2d333b;
+      --muted:     #8b949e;
+      --text:      #e6edf3;
+      --accent:    #58a6ff;
+      --green:     #3fb950;
+      --amber:     #d29922;
+      --amber-bg:  #1a1500;
+      --red:       #f85149;
+      --red-bg:    #1a0d0d;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100dvh;
+      padding: 24px 16px 40px;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .page {
+      max-width: 460px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    header h1 {
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    header p {
+      margin-top: 6px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    /* ── cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 14px;
+    }
+
+    .field + .field { margin-top: 18px; }
+
+    label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    label .optional {
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #4d5562;
+      margin-left: 4px;
+    }
+
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .prefix {
+      position: absolute;
+      left: 14px;
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: var(--muted);
+      pointer-events: none;
+      line-height: 1;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 15px 14px 15px 34px;
+      font-size: 1.65rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--bg);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      outline: none;
+      appearance: textfield;
+      -moz-appearance: textfield;
+      transition: border-color 0.15s;
+    }
+
+    input[type="number"].no-prefix {
+      padding-left: 16px;
+    }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    input[type="number"]:focus { border-color: var(--accent); }
+
+    /* ── error / warning banners ── */
+    .error, .warning {
+      display: none;
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1.4;
+      text-align: center;
+    }
+
+    .error {
+      background: var(--red-bg);
+      border: 2px solid var(--red);
+      color: var(--red);
+    }
+
+    .warning {
+      background: var(--amber-bg);
+      border: 2px solid var(--amber);
+      color: var(--amber);
+    }
+
+    .error.show, .warning.show { display: block; }
+
+    /* ── results ── */
+    .results { display: none; }
+    .results.show { display: block; }
+
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--border);
+      padding: 0 2px;
+      margin-bottom: 2px;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 2px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .result-row:last-child { border-bottom: none; }
+
+    .result-row .rlabel {
+      font-size: 1rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .result-row .value {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      text-align: right;
+    }
+
+    .value-sub {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .value.blue   { color: var(--accent); }
+    .value.amber  { color: var(--amber); }
+    .value.green  { color: var(--green); }
+
+    /* inline warning line inside results */
+    .warn-row {
+      display: none;
+      padding: 6px 2px 14px;
+      color: var(--amber);
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-align: right;
+    }
+    .warn-row.show { display: block; }
+
+    /* ── divider ── */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 6px 0 14px;
+    }
+
+    /* actual R:R row hidden until target price is filled */
+    #actual-rr-row { display: none; }
+
+    /* ── footer ── */
+    footer {
+      text-align: center;
+      margin-top: 28px;
+      font-size: 0.72rem;
+      color: #3d444d;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>Position Size Calculator</h1>
+    <p>Risk capped at 1.5% of account &nbsp;·&nbsp; Read-only, no orders placed</p>
+  </header>
+
+  <!-- primary inputs -->
+  <div class="card">
+    <div class="field">
+      <label for="account">Account Size</label>
+      <div class="input-wrap">
+        <span class="prefix">$</span>
+        <input id="account" type="number" inputmode="decimal" min="0" step="1" placeholder="25000">
+      </div>
+    </div>
+    <div class="field">
+      <label for="entry">Entry Price</label>
+      <div class="input-wrap">
+        <span class="prefix">$</span>
+        <input id="entry" type="number" inputmode="decimal" min="0" step="0.01" placeholder="52.40">
+      </div>
+    </div>
+    <div class="field">
+      <label for="stop">Stop Price</label>
+      <div class="input-wrap">
+        <span class="prefix">$</span>
+        <input id="stop" type="number" inputmode="decimal" min="0" step="0.01" placeholder="49.80">
+      </div>
+    </div>
+  </div>
+
+  <!-- reward-to-risk inputs -->
+  <div class="card">
+    <div class="field">
+      <label for="min-rr">Minimum R:R Ratio</label>
+      <div class="input-wrap">
+        <input id="min-rr" type="number" class="no-prefix" inputmode="decimal"
+               min="0" step="0.1" placeholder="2.0" value="2.0">
+      </div>
+    </div>
+    <div class="field">
+      <label for="target">Target Price <span class="optional">(optional — resistance level)</span></label>
+      <div class="input-wrap">
+        <span class="prefix">$</span>
+        <input id="target" type="number" inputmode="decimal" min="0" step="0.01" placeholder="58.00">
+      </div>
+    </div>
+  </div>
+
+  <!-- hard error (stop ≥ entry, shares < 1) -->
+  <div class="error" id="error"></div>
+
+  <!-- over-concentration warning -->
+  <div class="warning" id="conc-warning"></div>
+
+  <!-- results -->
+  <div class="results card" id="results">
+
+    <div class="section-label">Position</div>
+
+    <div class="result-row">
+      <span class="rlabel">Shares to Buy</span>
+      <span class="value blue" id="out-shares">—</span>
+    </div>
+
+    <div class="result-row">
+      <span class="rlabel">Dollar Risk</span>
+      <span class="value amber" id="out-risk">—</span>
+    </div>
+
+    <div class="result-row">
+      <span class="rlabel">Position Value</span>
+      <div class="value blue">
+        <span id="out-pos-value">—</span>
+        <span class="value-sub" id="out-pos-pct"></span>
+      </div>
+    </div>
+
+    <!-- R:R section — always shown when results are valid -->
+    <div id="rr-section">
+      <div class="divider"></div>
+      <div class="section-label">Reward : Risk</div>
+
+      <div class="result-row">
+        <span class="rlabel">Min Target <span id="out-rr-label"></span></span>
+        <span class="value green" id="out-min-target">—</span>
+      </div>
+
+      <div class="result-row" id="actual-rr-row">
+        <span class="rlabel">Actual R:R</span>
+        <span class="value" id="out-rr">—</span>
+      </div>
+      <div class="warn-row" id="rr-warn"></div>
+    </div>
+
+  </div>
+
+  <footer>
+    Analysis only &nbsp;·&nbsp; No orders are submitted, modified, or cancelled<br>
+    Position sizing enforces the 1.5% account-risk limit
+  </footer>
+
+</div>
+<script>
+  const MAX_RISK       = 0.015;
+  const CONC_THRESHOLD = 0.25;
+
+  const get = id => document.getElementById(id);
+
+  const accountEl  = get('account');
+  const entryEl    = get('entry');
+  const stopEl     = get('stop');
+  const minRREl    = get('min-rr');
+  const targetEl   = get('target');
+  const errorEl    = get('error');
+  const concWarnEl = get('conc-warning');
+  const resultsEl     = get('results');
+  const rrWarnEl      = get('rr-warn');
+  const rrValueEl     = get('out-rr');
+  const actualRRRow   = get('actual-rr-row');
+  const minTargetEl   = get('out-min-target');
+  const rrLabelEl     = get('out-rr-label');
+
+  function usd(n, dp = 2) {
+    return '$' + n.toLocaleString('en-US', {
+      minimumFractionDigits: dp,
+      maximumFractionDigits: dp,
+    });
+  }
+
+  function pct(n, dp = 1) {
+    return n.toLocaleString('en-US', {
+      minimumFractionDigits: dp,
+      maximumFractionDigits: dp,
+    }) + '%';
+  }
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.classList.add('show');
+    concWarnEl.classList.remove('show');
+    resultsEl.classList.remove('show');
+  }
+
+  function reset() {
+    errorEl.classList.remove('show');
+    concWarnEl.classList.remove('show');
+    resultsEl.classList.remove('show');
+  }
+
+  function calculate() {
+    const account = parseFloat(accountEl.value);
+    const entry   = parseFloat(entryEl.value);
+    const stop    = parseFloat(stopEl.value);
+
+    if ([account, entry, stop].some(v => isNaN(v) || v <= 0)) {
+      reset();
+      return;
+    }
+
+    if (stop >= entry) {
+      showError('Stop price must be below entry price.');
+      return;
+    }
+
+    const riskPerShare   = entry - stop;
+    const maxRiskDollars = account * MAX_RISK;
+    const shares         = Math.floor(maxRiskDollars / riskPerShare);
+
+    if (shares < 1) {
+      showError(
+        'Risk per share (' + usd(riskPerShare) + ') exceeds the 1.5% account cap ' +
+        '(' + usd(maxRiskDollars) + '). ' +
+        'Tighten the stop or increase account size.'
+      );
+      return;
+    }
+
+    // ── core outputs ──
+    const dollarRisk  = shares * riskPerShare;
+    const posValue    = shares * entry;
+    const posPct      = (posValue / account) * 100;
+
+    errorEl.classList.remove('show');
+
+    get('out-shares').textContent  = shares.toLocaleString('en-US');
+    get('out-risk').textContent    = usd(dollarRisk);
+    get('out-pos-value').textContent = usd(posValue);
+    get('out-pos-pct').textContent = pct(posPct) + ' of account';
+
+    // ── concentration warning ──
+    if (posPct > CONC_THRESHOLD * 100) {
+      concWarnEl.textContent =
+        'Position is over-concentrated — ' + pct(posPct) +
+        ' of account exceeds the 25% guideline.';
+      concWarnEl.classList.add('show');
+    } else {
+      concWarnEl.classList.remove('show');
+    }
+
+    // ── R:R section ──
+    const target = parseFloat(targetEl.value);
+    const minRR  = parseFloat(minRREl.value) || 2.0;
+
+    // Min target is always shown: the price needed to hit the minimum R:R
+    const minTarget = entry + minRR * riskPerShare;
+    rrLabelEl.textContent   = 'at ' + minRR.toFixed(1) + ':1';
+    minTargetEl.textContent = usd(minTarget);
+
+    // Actual R:R row only when a target price is entered above entry
+    const targetValid = !isNaN(target) && target > entry;
+    actualRRRow.style.display = targetValid ? '' : 'none';
+
+    if (targetValid) {
+      const ratio = (target - entry) / riskPerShare;
+      rrValueEl.textContent = ratio.toFixed(2) + ' : 1';
+      rrValueEl.className   = 'value ' + (ratio >= minRR ? 'green' : 'amber');
+
+      if (ratio < minRR) {
+        rrWarnEl.textContent = 'Below your ' + minRR.toFixed(1) + ':1 minimum — target does not meet the threshold.';
+        rrWarnEl.classList.add('show');
+      } else {
+        rrWarnEl.classList.remove('show');
+      }
+    } else {
+      rrWarnEl.classList.remove('show');
+    }
+
+    resultsEl.classList.add('show');
+  }
+
+  [accountEl, entryEl, stopEl, minRREl, targetEl].forEach(el =>
+    el.addEventListener('input', calculate)
+  );
+</script>
+</body>
+</html>
