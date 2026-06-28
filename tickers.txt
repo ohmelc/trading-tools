@@ -299,3 +299,9 @@ XYL
 XYZ
 ZBH
 ZTS
+
+# Auto-discovered 2026-06-28
+ECHO
+FLEX
+ORCL
+RJF
